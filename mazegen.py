@@ -12,6 +12,7 @@ Wall encoding:
     written to the output file.
 """
 import random
+from collections import deque
 
 NORTH = 1
 EAST = 2
@@ -48,8 +49,6 @@ class MazeGenerator:
         """
         self.width: int = width
         self.height: int = height
-        self.entry = maze_entry
-        self.exit = maze_exit
         entry_x, entry_y = maze_entry
         exit_x, exit_y = maze_exit
         if not (0 <= entry_x < self.width and 0 <= entry_y < self.height):
@@ -58,6 +57,8 @@ class MazeGenerator:
             raise ValueError(f"exit {maze_exit} is outside the maze")
         if maze_entry == maze_exit:
             raise ValueError("Entry and exit values must be different")
+        self.entry = maze_entry
+        self.exit = maze_exit
         self._rng: random.Random = random.Random(seed)
         self.reset()
 
@@ -90,6 +91,7 @@ class MazeGenerator:
         return moves
 
     def generate(self) -> None:
+        """Backtracking to mine all the paths and generate a perfect maze"""
         self.reset()
         start: tuple[int, int] = self.entry
         self.visited.add(start)
@@ -105,3 +107,37 @@ class MazeGenerator:
                 self.mine(x, y, mine_direction)
                 self.visited.add((next_x, next_y))
                 stack.append((next_x, next_y))
+
+    def open_neighbors(self, x: int, y: int) -> list[tuple[int, int, int]]:
+        """Check open neighbors cells"""
+        availables: list[tuple[int, int, int]] = []
+        for direction, (diff_x, diff_y) in DELTAS.items():
+            neib_x = x + diff_x
+            neib_y = y + diff_y
+            if (0 <= neib_x < self.width and
+                    0 <= neib_y < self.height and
+                    not (self.grid[y][x] & direction)):
+                availables.append((neib_x, neib_y, direction))
+        return availables
+
+    def solve(self) -> list[tuple[int, int]]:
+        queue = deque([self.entry])
+        parents: dict[tuple[int, int], tuple[int, int] | None] = {self.entry: None}
+        while queue:
+            current = queue.popleft()
+            if current == self.exit:
+                break
+            x, y = current
+            for neib_x, neib_y, direction in self.open_neighbors(x, y):
+                if (neib_x, neib_y) not in parents:
+                    parents[(neib_x, neib_y)] = current
+                    queue.append((neib_x, neib_y))
+        path = []
+        if self.exit not in parents:
+            return []
+        cell: tuple[int, int] | None = self.exit
+        while cell is not None:
+            path.append(cell)
+            cell = parents[cell]
+        path.reverse()
+        return path
