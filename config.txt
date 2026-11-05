@@ -1,8 +1,8 @@
 # Taille du labyrinthe
 WIDTH=20
-HEIGHT=10
+HEIGHT=20
 
-ENTRY=0,0
-EXIT=19,9
+ENTRY=2,5
+EXIT=4,4
 OUTPUT_FILE=maze.txt
-PERFECT=true
+PERFECT=True

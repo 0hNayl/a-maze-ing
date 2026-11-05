@@ -10,9 +10,24 @@ SOLUTION_COLOR = "\033[48;2;100;149;237m"
 PATTERN_COLOR = "\033[48;2;130;130;130m"
 RESET = "\033[0m"
 REQUIRED_KEYS = ("WIDTH", "HEIGHT", "ENTRY", "EXIT", "OUTPUT_FILE", "PERFECT")
+CLEAR = "\033[2J\033[H"
+
+WALL_COLORS = [
+    WALL_COLOR,
+    "\033[48;2;70;130;220m",
+    "\033[48;2;60;170;90m",
+    "\033[48;2;200;80;80m",
+]
+MENU = ("=== A-Maze-ing ===\n"
+        "1. Re-generate a new maze\n"
+        "2. Show/Hide path from entry to exit\n"
+        "3. Rotate maze colors\n"
+        "4. Quit")
 
 
-def display_maze(maze: MazeGenerator, path: list[tuple[int, int]] = []) -> None:
+def display_maze(maze: MazeGenerator,
+                 path: list[tuple[int, int]] = [],
+                 wall_color: str = WALL_COLOR) -> None:
     for screen_y in range(2 * maze.height + 1):
         chars = []
         for screen_x in range(2 * maze.width + 1):
@@ -24,7 +39,7 @@ def display_maze(maze: MazeGenerator, path: list[tuple[int, int]] = []) -> None:
                     or screen_y == 0
                     or screen_x == 2 * maze.width
                     or screen_y == 2 * maze.height):
-                color = WALL_COLOR
+                color = wall_color
             elif screen_x % 2 == 1 and screen_y % 2 == 1:
                 cell_x = screen_x // 2
                 cell_y = screen_y // 2
@@ -46,7 +61,7 @@ def display_maze(maze: MazeGenerator, path: list[tuple[int, int]] = []) -> None:
                 if around <= maze.pattern:
                     color = PATTERN_COLOR
                 else:
-                    color = WALL_COLOR
+                    color = wall_color
             elif screen_y % 2 == 1:
                 cell_x = screen_x // 2
                 cell_y = screen_y // 2
@@ -54,7 +69,7 @@ def display_maze(maze: MazeGenerator, path: list[tuple[int, int]] = []) -> None:
                         and (cell_x - 1, cell_y) in maze.pattern):
                     color = PATTERN_COLOR
                 elif maze.grid[cell_y][cell_x] & WEST:
-                    color = WALL_COLOR
+                    color = wall_color
                 elif (cell_x, cell_y) in path and (cell_x - 1, cell_y) in path:
                     color = SOLUTION_COLOR
                 else:
@@ -66,7 +81,7 @@ def display_maze(maze: MazeGenerator, path: list[tuple[int, int]] = []) -> None:
                         and (cell_x, cell_y - 1) in maze.pattern):
                     color = PATTERN_COLOR
                 elif maze.grid[cell_y][cell_x] & NORTH:
-                    color = WALL_COLOR
+                    color = wall_color
                 elif (cell_x, cell_y) in path and (cell_x, cell_y - 1) in path:
                     color = SOLUTION_COLOR
                 else:
@@ -125,7 +140,52 @@ def to_bool(key: str, value: str) -> bool:
     else:
         raise ValueError(f"invalid bool for {key}: {value}")
 
-    
+
+def write_output(maze: MazeGenerator, path: list[tuple[int, int]],
+                 output_file: str) -> None:
+    """Write the maze and its solution to the output file."""
+    with open(output_file, "w") as f:
+        f.write(maze.to_text(path))
+
+
+def run(maze: MazeGenerator, output_file: str, message: str = "") -> None:
+    """Display the maze and handle the user's choices."""
+    maze.generate()
+    path = maze.solve()
+    show_path = False
+    color = 0
+    try:
+        write_output(maze, path, output_file)
+    except OSError as error:
+        message = f"Could not write output file: {error}"
+    while True:
+        print(CLEAR, end="")
+        display_maze(maze, path if show_path else [], WALL_COLORS[color])
+        print(MENU)
+        print(message)
+        try:
+            choice = input("Choice? (1-4): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        message = ""
+        if choice == "1":
+            maze.generate()
+            path = maze.solve()
+            try:
+                write_output(maze, path, output_file)
+            except OSError as error:
+                message = f"Could not write output file: {error}"
+        elif choice == "2":
+            show_path = not show_path
+        elif choice == "3":
+            color = (color + 1) % len(WALL_COLORS)
+        elif choice == "4":
+            break
+        else:
+            message = "Invalid choice, type 1 to 4."
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python3 a_maze_ing.py config.txt", file=sys.stderr)
@@ -142,15 +202,8 @@ if __name__ == "__main__":
     except (ValueError, OSError) as error:
         print(f"Error: {error}", file=sys.stderr)
         sys.exit(1)
+    start_message = ""
     if not maze1.has_pattern():
-        print("Error: maze too small to draw the 42 pattern",
-              file=sys.stderr)
-    maze1.generate()
-    path = maze1.solve()
-    try:
-        with open(output_file, "w") as f:
-            f.write(maze1.to_text(path))
-    except OSError as error:
-        print(f"Error: {error}", file=sys.stderr)
-        sys.exit(1)
-    display_maze(maze1, path)
+        start_message = "Warning: maze too small to draw the 42 pattern"
+        print(start_message, file=sys.stderr)
+    run(maze1, output_file, start_message)

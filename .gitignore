@@ -8,3 +8,4 @@ maze.txt
 *.egg-info/
 build/
 dist/
+.venv*:Zone.Identifier
