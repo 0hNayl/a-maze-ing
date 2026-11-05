@@ -10,6 +10,12 @@ Wall encoding:
     Bit 0 = north, bit 1 = east, bit 2 = south, bit 3 = west.
     The resulting value (0 to 15) is the hexadecimal digit
     written to the output file.
+
+"42" pattern:
+    A set of fully closed cells drawing "42", centred so that the
+    empty column between the "4" and the "2" lies on the centre cell.
+    These cells are marked as visited before generation, so the
+    algorithm never opens them.
 """
 import random
 from collections import deque
@@ -27,12 +33,27 @@ DELTAS = {
     WEST: (-1, 0)
 }
 
+LETTERS = {
+    (0, -1): "N",
+    (1, 0): "E",
+    (0, 1): "S",
+    (-1, 0): "W"
+}
 OPPOSITES = {
     NORTH: SOUTH,
     SOUTH: NORTH,
     EAST: WEST,
     WEST: EAST
 }
+
+PATTERN_42: tuple[str, ...] = (
+    "#.#.###",
+    "#.#...#",
+    "###.###",
+    "..#.#..",
+    "..#.###",
+)
+PATTERN_MARGIN = 1
 
 
 class MazeGenerator:
@@ -45,7 +66,13 @@ class MazeGenerator:
         Args:
             width: maze width in cells.
             height: maze height in cells.
+            maze_entry: entry cell (x, y).
+            maze_exit: exit cell (x, y).
             seed: seed of the created grid
+
+        Raises:
+            ValueError: if entry or exit is outside the maze, inside
+                the "42" pattern, or if they are the same cell.
         """
         self.width: int = width
         self.height: int = height
@@ -59,8 +86,41 @@ class MazeGenerator:
             raise ValueError("Entry and exit values must be different")
         self.entry = maze_entry
         self.exit = maze_exit
+        self.pattern: set[tuple[int, int]] = self.compute_pattern()
+        if maze_entry in self.pattern:
+            raise ValueError(f"entry {maze_entry} is inside the 42 pattern")
+        if maze_exit in self.pattern:
+            raise ValueError(f"exit {maze_exit} is inside the 42 pattern")
         self._rng: random.Random = random.Random(seed)
         self.reset()
+
+    def compute_pattern(self) -> set[tuple[int, int]]:
+        """Compute the cells of the "42" pattern, centred on the maze.
+
+        Returns:
+            The set of (x, y) cells to keep fully closed, or an empty
+            set if the maze is too small to hold the pattern and its
+            margin.
+        """
+        pattern_w = len(PATTERN_42[0])
+        pattern_h = len(PATTERN_42)
+        offset_x = self.width // 2 - pattern_w // 2
+        offset_y = self.height // 2 - pattern_h // 2
+        if (offset_x < PATTERN_MARGIN
+                or offset_y < PATTERN_MARGIN
+                or offset_x + pattern_w + PATTERN_MARGIN > self.width
+                or offset_y + pattern_h + PATTERN_MARGIN > self.height):
+            return set()
+        cells: set[tuple[int, int]] = set()
+        for pattern_y, row in enumerate(PATTERN_42):
+            for pattern_x, char in enumerate(row):
+                if char == "#":
+                    cells.add((offset_x + pattern_x, offset_y + pattern_y))
+        return cells
+
+    def has_pattern(self) -> bool:
+        """Tell whether the maze is big enough to contain the pattern."""
+        return bool(self.pattern)
 
     def reset(self) -> None:
         """Clear the grid and the visited set."""
@@ -93,6 +153,7 @@ class MazeGenerator:
     def generate(self) -> None:
         """Backtracking to mine all the paths and generate a perfect maze"""
         self.reset()
+        self.visited.update(self.pattern)
         start: tuple[int, int] = self.entry
         self.visited.add(start)
         stack: list[tuple[int, int]] = [start]
@@ -122,7 +183,9 @@ class MazeGenerator:
 
     def solve(self) -> list[tuple[int, int]]:
         queue = deque([self.entry])
-        parents: dict[tuple[int, int], tuple[int, int] | None] = {self.entry: None}
+        parents: dict[tuple[int, int], tuple[int, int] | None] = {
+            self.entry: None
+        }
         while queue:
             current = queue.popleft()
             if current == self.exit:
@@ -141,3 +204,20 @@ class MazeGenerator:
             cell = parents[cell]
         path.reverse()
         return path
+
+    def to_text(self, path: list[tuple[int, int]]) -> str:
+        lines = []
+        for row in self.grid:
+            lines.append("".join(format(cell, "X") for cell in row))
+        lines.append("")
+        lines.append(f"{self.entry[0]},{self.entry[1]}")
+        lines.append(f"{self.exit[0]},{self.exit[1]}")
+        path_text = []
+        for i in range(len(path) - 1):
+            x1, y1 = path[i]
+            x2, y2 = path[i + 1]
+            diff_x = x2 - x1
+            diff_y = y2 - y1
+            path_text.append(LETTERS[(diff_x, diff_y)])
+        lines.append("".join(path_text))
+        return "\n".join(lines) + "\n"
